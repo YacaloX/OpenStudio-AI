@@ -1,0 +1,14 @@
+# Runtime mínimo — Fase 1
+# En este entorno ya están instalados: requests 2.34.2
+requests>=2.31
+
+# --- Fase 2+ (instalar cuando se implementen) ---
+# google-api-python-client>=2.100   # YouTube Data API v3
+# google-auth-oauthlib>=1.0         # OAuth 2.0 Analytics
+# streamlit>=1.30                   # interfaz (Fase 6)
+# pillow>=10.0                      # miniaturas (ya instalada: 12.3.0)
+
+# --- Desarrollo (ya instaladas) ---
+pytest>=8
+ruff>=0.5
+mypy>=1.10

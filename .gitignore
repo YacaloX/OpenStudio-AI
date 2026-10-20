@@ -1,0 +1,41 @@
+# Secretos y credenciales
+.env
+*.env
+!.env.example
+credentials.json
+token.json
+client_secret*.json
+*.pem
+*.key
+
+# Datos locales (SQLite, cachés, imágenes generadas)
+data/*
+!data/.gitkeep
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Modelos y descargas pesadas
+models/
+*.gguf
+*.bin
+
+# Sistema y editores
+Thumbs.db
+Desktop.ini
+.DS_Store
+.idea/
+.vscode/
