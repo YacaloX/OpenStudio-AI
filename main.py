@@ -1,4 +1,4 @@
-"""Interfaz de línea de comandos de YacaloX AI (Fase 1).
+"""Interfaz de línea de comandos de YacaloX AI.
 
 Uso::
 
@@ -6,7 +6,8 @@ Uso::
     py main.py --ask "texto"       # un solo turno y salida
     py main.py --demo              # sin Ollama: proveedor falso (pruebas)
     py main.py --memoria           # resumen de la memoria persistente
-    py main.py --healthcheck       # comprueba que Ollama y el modelo responden
+    py main.py --cuota             # consumo de cuota de YouTube de hoy
+    py main.py --healthcheck       # comprueba Ollama, el modelo y YouTube
 """
 
 from __future__ import annotations
@@ -18,16 +19,19 @@ import sys
 
 from config import ConfigError, load_settings
 from core.assistant import Assistant
-from core.errors import YacaloXError
+from core.errors import YacaloXError, YouTubeError
+from memory.db import Database
 from memory.store import MemoryStore
 from models import create_provider
+from research.store import ResearchStore
 from tools import build_default_registry
+from youtube.client import YouTubeClient
 
 BANNER = """\
 ============================================================
-  YacaloX AI — asistente de estrategia de YouTube (Fase 1)
-  Memoria local en SQLite + Ollama. Sin conexión a YouTube.
-  Comandos: /salir  /memoria  /buscar <texto>  /borrar  /ayuda
+  YacaloX AI — asistente de estrategia de YouTube
+  Memoria local (SQLite) + Ollama + YouTube Data API v3
+  Comandos: /salir  /memoria  /buscar <texto>  /cuota  /borrar  /ayuda
 ============================================================"""
 
 
@@ -39,12 +43,47 @@ def _setup_logging(level: str) -> None:
     )
 
 
-def build_assistant(settings) -> Assistant:
+def build_assistant(settings) -> tuple[Assistant, YouTubeClient | None]:
     settings.ensure_dirs()
-    store = MemoryStore(settings.db_path)
-    registry = build_default_registry(store, settings)
+    db = Database(settings.db_path)
+    store = MemoryStore(db)
+    research = ResearchStore(db)
     provider = create_provider(settings)
-    return Assistant(settings, provider, registry, store)
+
+    youtube_client: YouTubeClient | None = None
+    if settings.youtube_enabled:
+        try:
+            youtube_client = YouTubeClient(
+                settings.youtube_api_key or "",
+                db,
+                daily_quota=settings.youtube_daily_quota,
+                cache_ttl=settings.youtube_cache_ttl,
+                timeout=settings.youtube_timeout,
+                region=settings.youtube_region,
+                language=settings.youtube_language,
+            )
+        except YouTubeError as exc:
+            print(f"[youtube] deshabilitado: {exc}", file=sys.stderr)
+
+    registry = build_default_registry(
+        store, settings, youtube_client=youtube_client, research_store=research
+    )
+    return Assistant(settings, provider, registry, store), youtube_client
+
+
+def _print_quota(client: YouTubeClient | None) -> None:
+    if client is None:
+        print("\nYouTube no está configurado (falta YOUTUBE_API_KEY en .env).")
+        return
+    snapshot = client.quota_snapshot()
+    print(f"\nCuota de YouTube — día {snapshot['day_utc']} (UTC)")
+    print(f"  Usadas: {snapshot['used']} / {snapshot['daily_limit']} unidades")
+    print(f"  Restantes: {snapshot['remaining']}")
+    by_endpoint = snapshot.get("by_endpoint")
+    if isinstance(by_endpoint, dict):
+        for endpoint, usage in by_endpoint.items():
+            print(f"    {endpoint}: {usage['units']} unidades en {usage['calls']} llamadas")
+    print(f"  {snapshot['note']}")
 
 
 def _print_turn(turn) -> None:
@@ -65,8 +104,10 @@ def _print_turn(turn) -> None:
     print()
 
 
-def _interactive(assistant: Assistant) -> int:
+def _interactive(assistant: Assistant, youtube_client: YouTubeClient | None) -> int:
     print(BANNER)
+    if youtube_client is None:
+        print("  [aviso] YouTube no está configurado: falta YOUTUBE_API_KEY en .env.")
     while True:
         try:
             user = input("\nTú > ").strip()
@@ -83,6 +124,9 @@ def _interactive(assistant: Assistant) -> int:
             continue
         if user == "/memoria":
             _print_memory(assistant)
+            continue
+        if user == "/cuota":
+            _print_quota(youtube_client)
             continue
         if user == "/borrar":
             assistant.reset_session()
@@ -131,6 +175,7 @@ Comandos:
   /salir          Cierra la aplicación
   /memoria        Resumen de la memoria persistente
   /buscar <texto> Búsqueda léxica en la memoria
+  /cuota          Consumo de cuota de YouTube de hoy
   /borrar         Borra el historial de esta sesión (no la memoria)
   /ayuda          Esta ayuda
 Cualquier otra cosa se envía al asistente.
@@ -138,11 +183,12 @@ Cualquier otra cosa se envía al asistente.
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="YacaloX AI — Fase 1 (asistente local)")
+    parser = argparse.ArgumentParser(description="YacaloX AI — asistente local de estrategia de YouTube")
     parser.add_argument("--ask", metavar="TEXTO", help="Un único turno sin modo interactivo")
     parser.add_argument("--demo", action="store_true", help="Usa el proveedor falso (sin Ollama)")
     parser.add_argument("--memoria", action="store_true", help="Muestra el resumen de memoria y sale")
-    parser.add_argument("--healthcheck", action="store_true", help="Comprueba la conexión con Ollama")
+    parser.add_argument("--cuota", action="store_true", help="Muestra el consumo de cuota de YouTube y sale")
+    parser.add_argument("--healthcheck", action="store_true", help="Comprueba Ollama, el modelo y YouTube")
     parser.add_argument("--model", help="Sobrescribe YACALOX_MODEL para esta ejecución")
     args = parser.parse_args(argv)
 
@@ -167,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     _setup_logging(settings.log_level)
 
     try:
-        assistant = build_assistant(settings)
+        assistant, youtube_client = build_assistant(settings)
     except YacaloXError as exc:
         print(f"[error] {exc}", file=sys.stderr)
         return 2
@@ -175,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.memoria:
             _print_memory(assistant)
+            return 0
+
+        if args.cuota:
+            _print_quota(youtube_client)
             return 0
 
         if args.healthcheck:
@@ -187,12 +237,22 @@ def main(argv: list[str] | None = None) -> int:
 
             if isinstance(assistant.provider, OllamaProvider):
                 available = assistant.provider.available_models()
-                print(f"[healthcheck] OK. Modelos descargados: {', '.join(available) or 'ninguno'}")
+                print(f"[healthcheck] Ollama OK. Modelos descargados: {', '.join(available) or 'ninguno'}")
                 if settings.model not in available:
                     print(f"[healthcheck] AVISO: falta '{settings.model}'. Ejecuta: ollama pull {settings.model}")
                     return 1
             else:
-                print("[healthcheck] OK (proveedor simulado).")
+                print("[healthcheck] Ollama OK (proveedor simulado).")
+
+            if youtube_client is None:
+                print("[healthcheck] YouTube: sin configurar (falta YOUTUBE_API_KEY).")
+            else:
+                try:
+                    channel = youtube_client.get_channel("UC_x5XG1OV2P6uZZ5FSM9Ttw")
+                except YacaloXError as exc:
+                    print(f"[healthcheck] YouTube FALLO: {exc}", file=sys.stderr)
+                    return 1
+                print(f"[healthcheck] YouTube OK (prueba: {channel.title}, 1 unidad de cuota).")
             return 0
 
         if args.ask:
@@ -210,9 +270,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"\n[herramientas] {summary}", file=sys.stderr)
             return 0
 
-        return _interactive(assistant)
+        return _interactive(assistant, youtube_client)
     finally:
         assistant.close()
+        if youtube_client is not None:
+            youtube_client.close()
 
 
 if __name__ == "__main__":

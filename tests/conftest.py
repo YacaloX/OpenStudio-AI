@@ -74,6 +74,13 @@ def registry(store, settings):
     return build_default_registry(store, settings)
 
 
+@pytest.fixture
+def research(store):
+    from research.store import ResearchStore
+
+    return ResearchStore(store.db)
+
+
 def test_root_has_config_module():
     assert (ROOT / "config.py").is_file()
     assert (ROOT / "main.py").is_file()

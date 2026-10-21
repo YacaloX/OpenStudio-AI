@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from memory import Database, MemoryStore
+from memory.db import SCHEMA_VERSION
 
 
 def test_add_and_get_memory(store):
@@ -121,7 +122,7 @@ def test_database_schema_version_and_persistence(tmp_path):
     store.close()
 
     reopened = MemoryStore(path)
-    assert reopened.db.schema_version() == 1
+    assert reopened.db.schema_version() == SCHEMA_VERSION
     assert reopened.count() == 1
     reopened.close()
 

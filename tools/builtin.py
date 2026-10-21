@@ -22,8 +22,19 @@ _PARAM_KIND = {
 }
 
 
-def build_default_registry(store: MemoryStore, settings: Settings) -> ToolRegistry:
-    """Crea el registro de herramientas disponible en la Fase 1."""
+def build_default_registry(
+    store: MemoryStore,
+    settings: Settings,
+    *,
+    youtube_client=None,
+    research_store=None,
+) -> ToolRegistry:
+    """Crea el registro de herramientas.
+
+    Las herramientas de YouTube sólo se añaden si hay cliente (es decir, si
+    ``YOUTUBE_API_KEY`` está configurada). Así el asistente nunca finge tener
+    capacidades que no puede ejecutar.
+    """
     registry = ToolRegistry(store=store)
 
     registry.register(
@@ -147,6 +158,11 @@ def build_default_registry(store: MemoryStore, settings: Settings) -> ToolRegist
             handler=lambda args: {"deleted": store.delete(int(args["id"]))},
         )
     )
+
+    if youtube_client is not None and research_store is not None:
+        from tools.youtube_tools import register_youtube_tools
+
+        register_youtube_tools(registry, youtube_client, research_store)
 
     return registry
 

@@ -110,6 +110,16 @@ class Settings:
     db_path: Path
     youtube_api_key: str | None
     youtube_client_secrets: Path
+    youtube_daily_quota: int = 10000
+    youtube_cache_ttl: int = 21600
+    youtube_region: str = "CO"
+    youtube_language: str = "es"
+    youtube_timeout: float = 20.0
+    num_ctx: int = 8192
+
+    @property
+    def youtube_enabled(self) -> bool:
+        return bool(self.youtube_api_key)
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -149,7 +159,7 @@ class Settings:
             provider=provider,
             ollama_url=ollama_url,
             model=model,
-            timeout=_env_float("YACALOX_TIMEOUT", 120.0, minimum=1.0, maximum=900.0),
+            timeout=_env_float("YACALOX_TIMEOUT", 300.0, minimum=1.0, maximum=1800.0),
             think=_env_bool("YACALOX_THINK", False),
             max_tool_iterations=_env_int(
                 "YACALOX_MAX_TOOL_ITERATIONS", 6, minimum=1, maximum=32
@@ -161,6 +171,18 @@ class Settings:
             db_path=data_dir / "yacalox.db",
             youtube_api_key=youtube_api_key,
             youtube_client_secrets=client_secrets,
+            youtube_daily_quota=_env_int(
+                "YACALOX_YOUTUBE_DAILY_QUOTA", 10000, minimum=1, maximum=1_000_000
+            ),
+            youtube_cache_ttl=_env_int(
+                "YACALOX_YOUTUBE_CACHE_TTL", 21600, minimum=0, maximum=604800
+            ),
+            youtube_region=_env_str("YACALOX_YOUTUBE_REGION", "CO").upper(),
+            youtube_language=_env_str("YACALOX_YOUTUBE_LANGUAGE", "es").lower(),
+            youtube_timeout=_env_float(
+                "YACALOX_YOUTUBE_TIMEOUT", 20.0, minimum=1.0, maximum=120.0
+            ),
+            num_ctx=_env_int("YACALOX_NUM_CTX", 8192, minimum=1024, maximum=131072),
         )
         settings.validate()
         return settings
@@ -170,6 +192,14 @@ class Settings:
             raise ConfigError(f"YACALOX_DATA_DIR apunta a un archivo, no a una carpeta: {self.data_dir}")
         if self.provider == "ollama" and not self.model:
             raise ConfigError("Con provider=ollama es obligatorio YACALOX_MODEL.")
+        if len(self.youtube_region) != 2 or not self.youtube_region.isalpha():
+            raise ConfigError(
+                f"YACALOX_YOUTUBE_REGION='{self.youtube_region}' debe ser un código ISO de 2 letras (p. ej. CO)."
+            )
+        if len(self.youtube_language) != 2 or not self.youtube_language.isalpha():
+            raise ConfigError(
+                f"YACALOX_YOUTUBE_LANGUAGE='{self.youtube_language}' debe ser un código ISO de 2 letras (p. ej. es)."
+            )
 
     def ensure_dirs(self) -> None:
         """Crea los directorios locales necesarios (idempotente)."""
@@ -183,12 +213,17 @@ class Settings:
             "ollama_url": self.ollama_url,
             "timeout_s": self.timeout,
             "temperature": self.temperature,
+            "num_ctx": self.num_ctx,
             "max_tool_iterations": self.max_tool_iterations,
             "history_window": self.history_window,
             "data_dir": str(self.data_dir),
             "db_path": str(self.db_path),
             "youtube_api_key": ("configurada" if self.youtube_api_key else "no configurada"),
             "youtube_client_secrets": str(self.youtube_client_secrets),
+            "youtube_daily_quota": self.youtube_daily_quota,
+            "youtube_cache_ttl_s": self.youtube_cache_ttl,
+            "youtube_region": self.youtube_region,
+            "youtube_language": self.youtube_language,
             "redacted": redact,
         }
 

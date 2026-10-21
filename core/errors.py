@@ -37,3 +37,20 @@ class ToolNotFoundError(ToolError):
 
 class ApprovalDenied(YacaloXError):
     """El usuario denegó la ejecución de una herramienta sensible."""
+
+
+class YouTubeError(YacaloXError):
+    """Error genérico de la integración con YouTube."""
+
+
+class YouTubeConfigError(YouTubeError):
+    """Falta la API key o está mal configurada."""
+
+
+class YouTubeQuotaError(YouTubeError):
+    """Cuota diaria de la API agotada (local o del proyecto de Google Cloud)."""
+
+
+class YouTubeAPIError(YouTubeError):
+    """Respuesta de error de la API de YouTube (4xx/5xx)."""
+

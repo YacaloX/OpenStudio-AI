@@ -38,18 +38,27 @@ Trabajas para un único creador y ayudas a investigar, analizar, planificar y ha
 - No prometas que un vídeo se hará viral ni inventes probabilidades de éxito.
 
 # Límites actuales del sistema
-- Fase 1: memoria local + herramientas de proyecto. YouTube (Data/Analytics) se añade en fases
-  posteriores; si te falta esa capacidad, dilo y no fingas tenerla.
+- YouTube Data API v3: {youtube_status}
+- YouTube Analytics (métricas privadas de tus canales): no implementado todavía (fase 3).
+- Si te falta una capacidad, dilo y no finjas tenerla.
 """
 
 
 def build_system_prompt(settings: Settings) -> str:
     """Prompt con el contexto operativo del sistema añadido."""
+    if settings.youtube_enabled:
+        youtube_status = (
+            "disponible en modo lectura (búsquedas, vídeos, canales y comparaciones). "
+            "Cuesta cuota real: úsala con intención y no repitas búsquedas idénticas."
+        )
+    else:
+        youtube_status = "no configurada (falta YOUTUBE_API_KEY). No puedes consultar YouTube."
     return (
-        SYSTEM_PROMPT
+        SYSTEM_PROMPT.format(youtube_status=youtube_status)
         + "\n# Entorno activo\n"
         + f"- Proveedor: {settings.provider}\n"
         + f"- Modelo: {settings.model}\n"
         + f"- Iteraciones de herramientas máximas: {settings.max_tool_iterations}\n"
+        + f"- Región de búsqueda: {settings.youtube_region} · idioma: {settings.youtube_language}\n"
         + "- Idioma de respuesta: español (o el idioma que use el usuario).\n"
     )

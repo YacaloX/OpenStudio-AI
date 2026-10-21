@@ -11,7 +11,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -51,6 +51,66 @@ CREATE TABLE IF NOT EXISTS tool_log (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_tool_log_created ON tool_log(created_at);
+
+-- Fase 2: cuota, caché HTTP y datos públicos de YouTube -----------------------
+
+CREATE TABLE IF NOT EXISTS api_quota (
+    day TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    units INTEGER NOT NULL DEFAULT 0,
+    calls INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, endpoint)
+);
+
+CREATE TABLE IF NOT EXISTS http_cache (
+    cache_key TEXT PRIMARY KEY,
+    endpoint TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_http_cache_expires ON http_cache(expires_at);
+
+CREATE TABLE IF NOT EXISTS youtube_videos (
+    video_id TEXT PRIMARY KEY,
+    channel_id TEXT,
+    channel_title TEXT,
+    title TEXT NOT NULL,
+    description TEXT,
+    published_at TEXT,
+    duration_seconds INTEGER,
+    view_count INTEGER,
+    like_count INTEGER,
+    comment_count INTEGER,
+    thumbnail_url TEXT,
+    source_query TEXT,
+    collected_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_videos_channel ON youtube_videos(channel_id);
+CREATE INDEX IF NOT EXISTS idx_videos_published ON youtube_videos(published_at);
+
+CREATE TABLE IF NOT EXISTS youtube_channels (
+    channel_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    published_at TEXT,
+    subscriber_count INTEGER,
+    video_count INTEGER,
+    view_count INTEGER,
+    thumbnail_url TEXT,
+    uploads_playlist_id TEXT,
+    collected_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS youtube_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    params TEXT NOT NULL DEFAULT '{}',
+    result_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_youtube_queries_created ON youtube_queries(created_at);
 """
 
 
@@ -74,7 +134,8 @@ class Database:
         self._conn.executescript(SCHEMA)
         with self._lock:
             self._conn.execute(
-                "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+                "INSERT INTO meta(key, value) VALUES('schema_version', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (str(SCHEMA_VERSION),),
             )
             self._conn.commit()
