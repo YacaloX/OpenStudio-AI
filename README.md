@@ -1,4 +1,4 @@
-# YacaloX AI
+# OpenStudio-AI
 
 Asistente personal de investigación y estrategia de contenido de YouTube.
 Sistema modular: modelo de lenguaje local (Ollama), memoria persistente en SQLite,
